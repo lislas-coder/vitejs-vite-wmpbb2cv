@@ -3,37 +3,23 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, LineChart, Line, ComposedChart 
 } from 'recharts';
-import { Filter, Target, TrendingUp, AlertCircle, Briefcase, Zap, SearchX, ArrowRight, List, MapPin, Factory, Cpu, Search, Clock } from 'lucide-react';
+import { Filter, Target, TrendingUp, AlertCircle, Briefcase, Zap, SearchX, ArrowRight, List, MapPin, Factory, Cpu } from 'lucide-react';
 
 const ANNUAL_GOAL = 450000000; // 450 Millones MXN
 
-// PALETA CORPORATIVA CON ALTO CONTRASTE (Azules y Verdes separados por tonos cálidos para evitar confusiones)
+// PALETA CORPORATIVA RER ENERGY GROUP (Vibrante y variada)
 const COLORS = {
-  primary: '#0a3663', 
-  success: '#69b32d', 
-  secondary: '#4b98d1', 
+  primary: '#0a3663', // Azul RER Oscuro
+  success: '#69b32d', // Verde RER
+  secondary: '#4b98d1', // Azul Claro
   danger: '#dc2626',
   warning: '#f59e0b',
-  piePalette: [
-    '#0a3663', // Azul RER
-    '#f59e0b', // Naranja
-    '#69b32d', // Verde RER
-    '#dc2626', // Rojo
-    '#4b98d1', // Azul Claro
-    '#8b5cf6', // Morado
-    '#84cc16', // Lima
-    '#1e40af', // Azul Profundo
-    '#4ade80', // Verde Claro
-    '#f97316', // Naranja Claro
-    '#0284c7', // Cyan
-    '#f43f5e', // Rosa
-    '#166534', // Verde Oscuro
-    '#d946ef', // Magenta
-    '#3b82f6'  // Azul Rey
-  ]
+  pieColorsA: ['#0a3663', '#69b32d', '#4b98d1', '#85c24e', '#2c5b8a', '#38bdf8', '#166534', '#0284c7'],
+  pieColorsB: ['#4b98d1', '#0a3663', '#85c24e', '#38bdf8', '#166534', '#0284c7', '#69b32d', '#2c5b8a'],
+  pieColorsC: ['#69b32d', '#4b98d1', '#0a3663', '#166534', '#38bdf8', '#2c5b8a', '#85c24e', '#0284c7']
 };
 
-// Formateadores globales
+// Formateadores globales seguros
 const formatCurrency = (val) => {
   const num = Number(val);
   if (isNaN(num)) return '0 MXN';
@@ -43,10 +29,10 @@ const formatCurrency = (val) => {
 const formatKW = (val) => {
   const num = Number(val);
   if (isNaN(num)) return '0 KW';
-  return num >= 1000 ? `${(num / 1000).toFixed(2)} MW` : `${num.toFixed(2)} KW`;
+  return num >= 1000 ? `${(num / 1000).toFixed(2)} MW` : `${num} KW`;
 };
 
-// Analizador de fechas estricto
+// Analizador estricto de fechas (Prioriza Formato México DD/MM/YYYY)
 const parseCustomDate = (dateStr) => {
   if (!dateStr || typeof dateStr !== 'string') return null;
   let cleanStr = dateStr.trim();
@@ -59,13 +45,17 @@ const parseCustomDate = (dateStr) => {
       let p2 = parseInt(parts[2], 10);
       
       if (!isNaN(p0) && !isNaN(p1) && !isNaN(p2)) {
-          if (p2 < 100) p2 += 2000; 
+          if (p2 < 100) p2 += 2000; // Ej: 26 -> 2026
           let year = p2;
           let month, day;
           
-          if (p1 > 12) { month = p0; day = p1; } 
-          else if (p0 > 12) { day = p0; month = p1; } 
-          else { day = p0; month = p1; } 
+          if (p1 > 12) { // Si el centro es mayor a 12, seguro es MM/DD/YYYY
+              month = p0; day = p1; 
+          } else if (p0 > 12) { // Si el inicio es mayor a 12, es DD/MM/YYYY
+              day = p0; month = p1; 
+          } else { // Si ambos son menores a 12 (ej. 12/02), PRIORIDAD FORMATO LATINO DD/MM/YYYY
+              day = p0; month = p1; 
+          }
           
           const manualDate = new Date(year, month - 1, day);
           if (!isNaN(manualDate.getTime())) return manualDate;
@@ -77,12 +67,13 @@ const parseCustomDate = (dateStr) => {
   return null;
 };
 
-// Parser CSV Robusto
+// Parser CSV Robusto (Resuelve "Enters" y saltos de línea internos en celdas de Excel)
 const parseAdvancedCSV = (text) => {
   const firstLineIdx = text.indexOf('\n');
   const firstLine = firstLineIdx !== -1 ? text.substring(0, firstLineIdx) : text;
   const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
 
+  // Dividir por líneas reales
   const rawLines = text.split(/\r?\n/);
   const mergedLines = [];
   let tempLine = '';
@@ -94,13 +85,13 @@ const parseAdvancedCSV = (text) => {
       
       if (openQuotes) {
           tempLine += '\n' + line;
-          if (quotesInLine % 2 !== 0) { 
+          if (quotesInLine % 2 !== 0) { // Cierra si hay comillas impares que compensan
               openQuotes = false;
               mergedLines.push(tempLine);
               tempLine = '';
           }
       } else {
-          if (quotesInLine % 2 !== 0) { 
+          if (quotesInLine % 2 !== 0) { // Abre si hay comillas impares
               openQuotes = true;
               tempLine = line;
           } else {
@@ -108,7 +99,7 @@ const parseAdvancedCSV = (text) => {
           }
       }
   }
-  if (openQuotes) mergedLines.push(tempLine); 
+  if (openQuotes) mergedLines.push(tempLine); // fallback de seguridad
 
   return mergedLines.map(line => {
       let row = [];
@@ -117,7 +108,7 @@ const parseAdvancedCSV = (text) => {
       for (let i = 0; i < line.length; i++) {
           let c = line[i], nc = line[i+1];
           if (c === '"') {
-              if (inQ && nc === '"') { val += '"'; i++; } 
+              if (inQ && nc === '"') { val += '"'; i++; } // Comilla escapada de excel ""
               else { inQ = !inQ; }
           } else if (c === delimiter && !inQ) {
               row.push(val.trim()); val = '';
@@ -130,57 +121,6 @@ const parseAdvancedCSV = (text) => {
   }).filter(row => row.length > 1 || (row.length === 1 && row[0] !== ''));
 };
 
-// Funciones de Limpieza y Normalización
-const cleanValue = (val) => {
-    if (!val) return 'Sin Asignar';
-    const trimmed = val.trim();
-    return trimmed === '' ? 'Sin Asignar' : trimmed;
-};
-
-// Convierte a formato título (Ej: "comercio" -> "Comercio") para unificar gráficas
-const toTitleCase = (str) => {
-    if (!str || str === 'Sin Asignar' || str === 'TBD') return str;
-    return str.toLowerCase().split(/\s+/).map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
-};
-
-const cleanOrigin = (val) => {
-    let c = cleanValue(val);
-    if (/op\s*sell/i.test(c) || /up\s*sell/i.test(c)) return 'Up Sell';
-    return toTitleCase(c);
-};
-
-const cleanState = (val) => {
-    let c = cleanValue(val);
-    if (c === 'Sin Asignar') return c;
-    
-    // Quita espacios múltiples y caracteres raros
-    c = c.replace(/\s+/g, ' ').trim();
-    
-    // Reglas geográficas fuertes para atrapar errores de dedo o abreviaciones
-    if (/quin/i.test(c) || /q\.?\s*roo/i.test(c) || /q\s*roo/i.test(c)) return 'Quintana Roo';
-    if (/nuevo\s*le[oó]n/i.test(c) || /^nl$/i.test(c)) return 'Nuevo León';
-    if (/cdmx/i.test(c) || /ciudad\s*de\s*m[eé]x/i.test(c)) return 'CDMX';
-    if (/edo\.?\s*m[eé]x/i.test(c) || /estado\s*de\s*m[eé]x/i.test(c)) return 'Estado de México';
-    if (/quer[eé]t/i.test(c) || /qro/i.test(c)) return 'Querétaro';
-    if (/yucat[aá]n/i.test(c)) return 'Yucatán';
-    if (/michoac[aá]n/i.test(c)) return 'Michoacán';
-
-    return toTitleCase(c);
-};
-
-// NUEVA FUNCIÓN: Limpieza y unificación de Industrias
-const cleanIndustry = (val) => {
-    let c = cleanValue(val);
-    if (c === 'Sin Asignar') return c;
-    c = c.replace(/\s+/g, ' ').trim();
-    
-    // Unificación estricta para Hospital / Hospitales
-    if (/hospital/i.test(c) || /cl[ií]nica/i.test(c) || /salud/i.test(c)) return 'Hospitales';
-    if (/hotel/i.test(c)) return 'Hoteles';
-    
-    return toTitleCase(c);
-};
-
 export default function App() {
   const [sheetUrl, setSheetUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -188,8 +128,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('upload'); 
   const [dataLoaded, setDataLoaded] = useState(false);
   const [pipelineData, setPipelineData] = useState([]);
-  
-  const [searchTerm, setSearchTerm] = useState('');
 
   const [filters, setFilters] = useState({
     month: 'Todos', contractType: 'Todos', projectType: 'Todos', origin: 'Todos', channel: 'Todos', kwRange: 'Todos', stageFilter: 'Todos'
@@ -203,49 +141,45 @@ export default function App() {
     }
   }, []);
 
-  const processData = (csvText) => {
+  const parseCSVAndMap = (csvText) => {
     const rows = parseAdvancedCSV(csvText);
     if (rows.length < 2) return [];
 
     let headerRowIndex = 0;
     let maxMatches = 0;
     let map = { 
-        name: -1, amount: -1, channel: -1, contractType: -1, origin: -1, competitor: -1, reason: -1, actionable: -1,
-        fechaVenta: -1, fechaCierre: -1, fechaArribo: -1, estadoAcuerdo: -1, etapaComercial: -1, pv: -1, bess: -1, gas: -1,
+        name: -1, amount: -1, kw: -1, channel: -1, contractType: -1, origin: -1, competitor: -1, reason: -1, actionable: -1,
+        fechaVenta: -1, fechaCierre: -1, estadoAcuerdo: -1, etapaComercial: -1, pv: -1, bess: -1, gas: -1,
         industry: -1, state: -1
     };
 
-    const matchHeader = (h, keywords) => keywords.some(kw => h === kw);
-    const includesHeader = (h, keywords) => keywords.some(kw => h.includes(kw));
-
+    // BÚSQUEDA EXACTA Y ESTRICTA DE COLUMNAS
     for (let r = 0; r < Math.min(15, rows.length); r++) {
       const rawHeaders = rows[r];
-      if (!rawHeaders || rawHeaders.length === 0) continue;
       const tempHeaders = rawHeaders.map(h => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
-      
       let matches = 0;
       let tempMap = { ...map };
 
       tempHeaders.forEach((h, i) => {
         if (!h) return;
-        if (tempMap.name === -1 && includesHeader(h, ['nombre del proyecto', 'proyecto'])) { tempMap.name = i; matches++; }
-        else if (tempMap.fechaVenta === -1 && includesHeader(h, ['fecha de venta', 'fecha venta'])) { tempMap.fechaVenta = i; matches += 2; }
-        else if (tempMap.fechaCierre === -1 && includesHeader(h, ['fecha estimada', 'fecha de cierre'])) { tempMap.fechaCierre = i; matches++; }
-        else if (tempMap.fechaArribo === -1 && includesHeader(h, ['fecha de arribo', 'fecha arribo'])) { tempMap.fechaArribo = i; matches++; }
-        else if (tempMap.amount === -1 && includesHeader(h, ['capex global mxn', 'capex global'])) { tempMap.amount = i; matches += 2; }
-        else if (tempMap.estadoAcuerdo === -1 && h === 'estado del acuerdo') { tempMap.estadoAcuerdo = i; matches++; }
-        else if (tempMap.etapaComercial === -1 && h === 'etapa comercial') { tempMap.etapaComercial = i; matches++; }
-        else if (tempMap.pv === -1 && matchHeader(h, ['pv kw dc'])) { tempMap.pv = i; matches++; }
-        else if (tempMap.bess === -1 && matchHeader(h, ['bess kwh'])) { tempMap.bess = i; matches++; }
-        else if (tempMap.gas === -1 && includesHeader(h, ['gas'])) { tempMap.gas = i; matches++; } // Ampliado para atrapar variaciones de Gas
-        else if (tempMap.origin === -1 && matchHeader(h, ['origen de la cuenta'])) { tempMap.origin = i; matches++; }
-        else if (tempMap.channel === -1 && matchHeader(h, ['responsable de la cta'])) { tempMap.channel = i; matches++; }
-        else if (tempMap.contractType === -1 && matchHeader(h, ['tipo de contrato'])) { tempMap.contractType = i; matches++; }
-        else if (tempMap.competitor === -1 && includesHeader(h, ['contra quien'])) { tempMap.competitor = i; matches++; }
-        else if (tempMap.reason === -1 && matchHeader(h, ['notas'])) { tempMap.reason = i; matches++; }
-        else if (tempMap.actionable === -1 && includesHeader(h, ['accion especifica'])) { tempMap.actionable = i; matches++; }
-        else if (tempMap.industry === -1 && matchHeader(h, ['rubro de la empresa'])) { tempMap.industry = i; matches++; }
-        else if (tempMap.state === -1 && matchHeader(h, ['estado'])) { tempMap.state = i; matches++; }
+        if (h === 'nombre del proyecto' || h === 'proyecto') { tempMap.name = i; matches++; }
+        if (h === 'fecha de venta' || h === 'fecha venta') { tempMap.fechaVenta = i; matches += 2; }
+        if (h.includes('fecha estimada') || h.includes('fecha de arribo')) { tempMap.fechaCierre = i; matches++; }
+        if (h === 'capex global mxn' || h === 'capex global') { tempMap.amount = i; matches += 2; }
+        if (h === 'kw total' || (h.includes('kw') && !h.includes('pv') && !h.includes('ups') && !h.includes('gas'))) { tempMap.kw = i; matches++; }
+        if (h.includes('estado del acuerdo') || h.includes('estatus')) { tempMap.estadoAcuerdo = i; matches++; }
+        if (h.includes('etapa comercial') || h.includes('etapa del acuerdo') || h.includes('etapa')) { tempMap.etapaComercial = i; matches++; }
+        if (h === 'pv kw dc' || h.includes('pv kw')) { tempMap.pv = i; matches++; }
+        if (h === 'bess kwh' || h.includes('bess')) { tempMap.bess = i; matches++; }
+        if (h === 'gas kw' || h.includes('gas kw')) { tempMap.gas = i; matches++; }
+        if (h.includes('origen de la cuenta') || h.includes('origen')) { tempMap.origin = i; matches++; }
+        if (h.includes('responsable de la cta') || h.includes('responsable') || h.includes('canal')) { tempMap.channel = i; matches++; }
+        if (h.includes('tipo de contrato') || h.includes('contrato')) { tempMap.contractType = i; matches++; }
+        if (h.includes('contra quien') || h.includes('competidor')) { tempMap.competitor = i; matches++; }
+        if (h === 'notas' || h.includes('motivo') || h.includes('razon')) { tempMap.reason = i; matches++; }
+        if (h.includes('siguiente accion') || h.includes('accion especifica')) { tempMap.actionable = i; matches++; }
+        if (h.includes('rubro de la empresa') || h.includes('rubro')) { tempMap.industry = i; matches++; }
+        if (h === 'estado' || (h.includes('estado') && !h.includes('acuerdo'))) { tempMap.state = i; matches++; }
       });
 
       if (matches > maxMatches) { maxMatches = matches; headerRowIndex = r; map = tempMap; }
@@ -256,27 +190,24 @@ export default function App() {
       const getVal = (idx) => idx !== -1 && row[idx] ? row[idx] : null;
       
       const name = getVal(map.name);
-      if (!name || name.trim() === '' || name.includes('RECUENTO') || name.includes('No altere') || name.includes('Ventas totales')) return null;
-
-      const fVenta = getVal(map.fechaVenta);
-      const fCierre = getVal(map.fechaCierre);
-      const fArribo = getVal(map.fechaArribo);
+      // Validaciones para evitar leer basura o notas saltadas
+      if (!name || name.trim() === '' || name.includes('RECUENTO') || name.includes('No altere')) return null;
 
       const estadoAcuerdo = getVal(map.estadoAcuerdo) || '';
       const etapaComercial = getVal(map.etapaComercial) || '';
       const combinedStageStr = `${estadoAcuerdo} ${etapaComercial}`.toLowerCase();
       
+      // FILTRO ESTRICTO: Desechar 2025
       if (combinedStageStr.includes('2025')) return null; 
 
       const rawAmount = getVal(map.amount) || '0';
       let parsedAmount = parseFloat(rawAmount.replace(/[^0-9.-]+/g,"")) || 0;
-      
-      // Extracción estricta de Tecnologías
+      const parsedKw = parseFloat((getVal(map.kw) || '0').replace(/[^0-9.-]+/g,"")) || 0;
+
       const pv = parseFloat((getVal(map.pv) || '0').replace(/[^0-9.-]+/g,"")) || 0;
       const bess = parseFloat((getVal(map.bess) || '0').replace(/[^0-9.-]+/g,"")) || 0;
       const gas = parseFloat((getVal(map.gas) || '0').replace(/[^0-9.-]+/g,"")) || 0;
-      const parsedKw = pv + bess + gas;
-
+      
       const hasPV = pv > 0;
       const hasBESS = bess > 0;
       const hasGAS = gas > 0;
@@ -287,29 +218,20 @@ export default function App() {
       if (hasGAS) pTypes.push('GAS');
       const projectType = pTypes.length > 0 ? pTypes.join(' + ') : 'TBD';
       
-      const hasFechaVentaValida = fVenta && fVenta.trim() !== '' && fVenta.trim() !== '0' && fVenta.trim() !== '-' && !fVenta.toLowerCase().includes('tbd');
-      const hasFechaCierreValida = fCierre && fCierre.trim() !== '' && fCierre.trim() !== '0' && fCierre.trim() !== '-' && !fCierre.toLowerCase().includes('tbd');
-
-      // 3 REGLAS ESTRICTAS DE CIERRE (Data Cleaning 3.1)
-      const isGanado = combinedStageStr.includes('ganado') || combinedStageStr.includes('cierre');
-      const isFirmado = combinedStageStr.includes('firmado');
-      const isWon = isGanado && isFirmado && hasFechaVentaValida;
-      
-      const isLost = combinedStageStr.includes('perdid') || combinedStageStr.includes('cancelad') || combinedStageStr.includes('pausad');
+      let isWon = combinedStageStr.includes('ganado') || combinedStageStr.includes('cerrado') || combinedStageStr.includes('5.');
+      let isLost = combinedStageStr.includes('perdid') || combinedStageStr.includes('cancelad') || combinedStageStr.includes('pausad');
       const displayStage = isWon ? 'Cerrado/Ganado' : isLost ? 'Perdido/Pausado' : 'Abierto/Pipeline';
 
-      const finalDateStr = isWon ? fVenta : (hasFechaCierreValida ? fCierre : null);
-      const parsedDate = parseCustomDate(finalDateStr);
+      const fechaVentaRaw = getVal(map.fechaVenta);
+      const fechaCierreRaw = getVal(map.fechaCierre);
+      const hasFechaVentaValida = fechaVentaRaw && fechaVentaRaw.trim() !== '' && fechaVentaRaw !== '0';
+      const hasFechaCierreValida = fechaCierreRaw && fechaCierreRaw.trim() !== '' && fechaCierreRaw !== '0';
       
-      const dVenta = parseCustomDate(fVenta);
-      const dArribo = parseCustomDate(fArribo);
-      const saleYear = dVenta ? dVenta.getFullYear() : null;
+      const finalDateStr = isWon ? (hasFechaVentaValida ? fechaVentaRaw : null) : (hasFechaCierreValida ? fechaCierreRaw : null);
+      const parsedDate = parseCustomDate(finalDateStr);
 
-      // Cálculo Time To Close (Ciclo de Venta)
-      let cycleDays = null;
-      if (isWon && dVenta && dArribo) {
-          const diffTime = Math.abs(dVenta - dArribo);
-          cycleDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (parsedDate && parsedDate.getFullYear() < 2026) {
+          return null; // Filtrar todo lo de 2025
       }
 
       let monthName = 'Mes No Especificado';
@@ -318,37 +240,23 @@ export default function App() {
           monthName = meses[parsedDate.getMonth()];
       }
 
-      // Limpieza de Fuente de Financiamiento y Data (Auto-Mayúsculas para unificar)
-      let contractClean = cleanValue(getVal(map.contractType));
-      if (contractClean === 'Sin Asignar') contractClean = 'TBD';
-      else contractClean = contractClean.toUpperCase();
-      
-      let channelClean = cleanValue(getVal(map.channel));
-      if (channelClean !== 'Sin Asignar') channelClean = channelClean.toUpperCase();
-
       return {
         id: index,
         name: name,
         month: monthName,
         amount: parsedAmount,
         kw: parsedKw,
-        pvValue: pv,
-        bessValue: bess,
-        gasValue: gas,
         stageCategory: displayStage,
-        etapaComercialRaw: etapaComercial,
         isWon: isWon,
         isLost: isLost,
         hasFechaVenta: hasFechaVentaValida,
-        saleYear: saleYear,
-        cycleDays: cycleDays,
-        channel: channelClean,
-        contractType: contractClean,
+        channel: getVal(map.channel) || 'No especificado',
+        contractType: getVal(map.contractType) || 'No especificado',
         projectType: projectType,
         hasPV, hasBESS, hasGAS,
-        industry: cleanIndustry(getVal(map.industry)),
-        state: cleanState(getVal(map.state)),
-        origin: cleanOrigin(getVal(map.origin)),
+        industry: getVal(map.industry) || 'No especificado',
+        state: getVal(map.state) || 'No especificado',
+        origin: getVal(map.origin) || 'No especificado',
         competitor: getVal(map.competitor) || '',
         reason: getVal(map.reason) || '',
         actionable: getVal(map.actionable) || ''
@@ -365,7 +273,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const data = processData(event.target.result);
+        const data = parseCSVAndMap(event.target.result);
         if(data.length > 0) { setPipelineData(data); setDataLoaded(true); }
         else setErrorMsg("El archivo no tiene proyectos válidos del 2026.");
       } catch (err) { setErrorMsg("Error al procesar el archivo."); console.error(err); } 
@@ -387,16 +295,16 @@ export default function App() {
       const response = await fetch(urlToFetch);
       if(!response.ok) throw new Error("Error HTTP");
       const csvText = await response.text();
-      const data = processData(csvText);
+      const data = parseCSVAndMap(csvText);
       if(data.length > 0) { setPipelineData(data); setDataLoaded(true); localStorage.setItem('rer_sheet_url_v1', rawUrl); } 
       else setErrorMsg("Documento vacío o sin proyectos de 2026.");
-    } catch (err) { setErrorMsg("Error de conexión."); } 
+    } catch (err) { setErrorMsg("Error de conexión. Verifica que el enlace sea público."); } 
     finally { setIsLoading(false); }
   };
 
-  const getOptions = (key) => ['Todos', ...Array.from(new Set(pipelineData.map(d => d[key]).filter(val => val !== 'Sin Asignar' && val !== 'TBD')))].sort();
+  const getOptions = (key) => ['Todos', ...Array.from(new Set(pipelineData.map(d => d[key]).filter(Boolean)))].sort();
   const months = ['Todos', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre', 'Mes No Especificado'];
-  const contractTypes = ['Todos', ...Array.from(new Set(pipelineData.map(d => d.contractType)))].sort();
+  const contractTypes = getOptions('contractType');
   const projectTypes = getOptions('projectType');
   const origins = getOptions('origin');
   const channels = getOptions('channel');
@@ -422,40 +330,23 @@ export default function App() {
     });
   }, [pipelineData, filters]);
 
-  // KPIs Generales
-  const allClosedProjects = filteredData.filter(d => d.isWon && d.hasFechaVenta);
-  const closedProjects2026 = allClosedProjects.filter(d => d.saleYear === 2026);
-  const totalCerrado2026 = closedProjects2026.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalProyectosCerrados = allClosedProjects.length;
+  // KPIs
+  const closedProjects = filteredData.filter(d => d.isWon && d.hasFechaVenta);
+  const totalCerrado = closedProjects.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalProyectosCerrados = closedProjects.length;
 
   const totalPosibleCierre = filteredData.filter(d => !d.isWon && !d.isLost).reduce((acc, curr) => acc + curr.amount, 0);
-  const progressPercent = Math.min(((totalCerrado2026 / ANNUAL_GOAL) * 100).toFixed(1), 100);
+  const progressPercent = Math.min(((totalCerrado / ANNUAL_GOAL) * 100).toFixed(1), 100);
 
-  // Time to Close (Ciclo de venta)
-  const closedWithCycle = allClosedProjects.filter(d => d.cycleDays !== null);
-  const avgCycleDays = closedWithCycle.length ? Math.round(closedWithCycle.reduce((acc, curr) => acc + curr.cycleDays, 0) / closedWithCycle.length) : 0;
-
-  // Gráfica de Avance Trimestral Ponderada
+  // Gráfica de Avance
   const monthlyData = useMemo(() => {
     const dataByMonth = {};
     const monthsOrder = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     
-    // Curva de Cierre (Tendencia Meta Trimestral)
-    const monthlyTargets = {
-        'Enero': 30000000, 'Febrero': 30000000, 'Marzo': 30000000,       // Q1 = 90M (20%)
-        'Abril': 30000000, 'Mayo': 30000000, 'Junio': 30000000,          // Q2 = 90M (20%)
-        'Julio': 30000000, 'Agosto': 30000000, 'Septiembre': 30000000,   // Q3 = 90M (20%)
-        'Octubre': 60000000, 'Noviembre': 60000000, 'Diciembre': 60000000// Q4 = 180M (40%)
-    };
-
-    let cumulativeTarget = 0;
-    monthsOrder.forEach(m => { 
-        cumulativeTarget += monthlyTargets[m];
-        dataByMonth[m] = { name: m, Ventas: 0, Meta: cumulativeTarget }; 
-    });
+    monthsOrder.forEach(m => { dataByMonth[m] = { name: m, Ventas: 0, Meta: ANNUAL_GOAL }; });
     
     filteredData.forEach(item => {
-      if (item.isWon && item.hasFechaVenta && item.saleYear === 2026 && dataByMonth[item.month]) {
+      if (item.isWon && item.hasFechaVenta && dataByMonth[item.month]) {
           dataByMonth[item.month].Ventas += item.amount;
       }
     });
@@ -467,43 +358,20 @@ export default function App() {
     }); 
   }, [filteredData]);
 
-  // Proyectos Asignados por Responsable (Nueva Gráfica)
-  const assignedData = useMemo(() => {
-    const reps = {};
-    filteredData.forEach(d => {
-        if (!d.isWon && !d.isLost && d.etapaComercialRaw.toLowerCase().includes('asignado')) {
-            const ch = d.channel;
-            reps[ch] = (reps[ch] || 0) + d.amount;
-        }
-    });
-    return Object.keys(reps).map(k => ({ name: k, value: reps[k] })).sort((a,b) => b.value - a.value);
-  }, [filteredData]);
-
+  // Gráficas Individuales
   const channelData = useMemo(() => {
     const counts = {};
-    filteredData.filter(d => d.isWon && d.hasFechaVenta).forEach(item => {
-      const ch = item.channel;
+    filteredData.filter(d => d.isWon).forEach(item => {
+      const ch = item.channel || 'Otros';
       counts[ch] = (counts[ch] || 0) + 1;
     });
-    return Object.keys(counts).map(key => ({ name: key, value: counts[key] })).sort((a,b) => b.value - a.value);
+    return Object.keys(counts).map(key => ({ name: key, value: counts[key] }));
   }, [filteredData]);
 
   const kwByContractData = useMemo(() => {
     const kws = {};
-    filteredData.forEach(item => { 
-        const ct = item.contractType;
-        kws[ct] = (kws[ct] || 0) + item.kw; 
-    });
-    return Object.keys(kws).map(key => ({ name: key, value: kws[key] })).sort((a,b) => b.value - a.value);
-  }, [filteredData]);
-
-  const originData = useMemo(() => {
-    const kws = {};
-    filteredData.forEach(item => { 
-        const og = item.origin;
-        kws[og] = (kws[og] || 0) + item.kw; 
-    });
-    return Object.keys(kws).map(key => ({ name: key, value: kws[key] })).sort((a,b) => b.value - a.value);
+    filteredData.forEach(item => { kws[item.contractType] = (kws[item.contractType] || 0) + item.kw; });
+    return Object.keys(kws).map(key => ({ name: key, value: kws[key] }));
   }, [filteredData]);
 
   const stageData = useMemo(() => {
@@ -517,7 +385,7 @@ export default function App() {
   const industryData = useMemo(() => {
     const counts = {};
     filteredData.forEach(item => { 
-        const ind = item.industry;
+        const ind = item.industry || 'No especificado';
         counts[ind] = (counts[ind] || 0) + 1; 
     });
     return Object.keys(counts).map(key => ({ name: key, value: counts[key] })).sort((a,b) => b.value - a.value).slice(0, 15); 
@@ -526,47 +394,40 @@ export default function App() {
   const stateData = useMemo(() => {
     const counts = {};
     filteredData.forEach(item => { 
-        const st = item.state;
+        const st = item.state || 'No especificado';
         counts[st] = (counts[st] || 0) + 1; 
     });
     return Object.keys(counts).map(key => ({ name: key, value: counts[key] })).sort((a,b) => b.value - a.value).slice(0, 15); 
   }, [filteredData]);
 
+  const originData = useMemo(() => {
+    const counts = {};
+    filteredData.forEach(item => { 
+        const og = item.origin || 'No especificado';
+        counts[og] = (counts[og] || 0) + 1; 
+    });
+    return Object.keys(counts).map(key => ({ name: key, value: counts[key] })).sort((a,b) => b.value - a.value);
+  }, [filteredData]);
+
   const techData = useMemo(() => {
-    let pvSum = 0, bessSum = 0, gasSum = 0;
+    let pv = 0, bess = 0, gas = 0;
     filteredData.forEach(d => {
-      pvSum += d.pvValue || 0;
-      bessSum += d.bessValue || 0;
-      gasSum += d.gasValue || 0;
+      if (d.hasPV) pv++;
+      if (d.hasBESS) bess++;
+      if (d.hasGAS) gas++;
     });
     return [
-      { name: 'Sistemas Solares (PV)', value: pvSum },
-      { name: 'Almacenamiento (BESS)', value: bessSum },
-      { name: 'Gas / Cogeneración', value: gasSum }
+      { name: 'Sistemas Solares (PV)', value: pv },
+      { name: 'Almacenamiento (BESS)', value: bess },
+      { name: 'Gas / Cogeneración', value: gas }
     ].filter(t => t.value > 0);
   }, [filteredData]);
 
-  const matchesSearch = (str) => str ? str.toLowerCase().includes(searchTerm.toLowerCase()) : false;
-  const searchFilter = (item) => {
-    if (!searchTerm) return true;
-    return matchesSearch(item.name) || matchesSearch(item.channel) || matchesSearch(item.actionable) || 
-           matchesSearch(item.reason) || matchesSearch(item.competitor) || matchesSearch(item.industry) || matchesSearch(item.state);
-  };
-
-  const sortedAndSearchedData = useMemo(() => {
-    let data = filteredData.filter(searchFilter);
-    return data.sort((a, b) => {
-      const order = { 'Cerrado/Ganado': 1, 'Abierto/Pipeline': 2, 'Perdido/Pausado': 3 };
-      return order[a.stageCategory] - order[b.stageCategory];
-    });
-  }, [filteredData, searchTerm]);
-
-  const posibleCierreList = filteredData.filter(d => !d.isWon && !d.isLost).filter(searchFilter);
-  const lostPausedList = filteredData.filter(d => d.isLost).filter(searchFilter);
-  
+  const posibleCierreList = filteredData.filter(d => !d.isWon && !d.isLost);
+  const lostPausedList = filteredData.filter(d => d.isLost);
   const competitorStats = useMemo(() => {
     const counts = {};
-    lostPausedList.filter(d => d.competitor && d.competitor.trim() !== '').forEach(item => { counts[item.competitor] = (counts[item.competitor] || 0) + 1; });
+    lostPausedList.filter(d => d.competitor).forEach(item => { counts[item.competitor] = (counts[item.competitor] || 0) + 1; });
     return Object.entries(counts).sort((a,b) => b[1] - a[1]);
   }, [lostPausedList]);
 
@@ -576,33 +437,15 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col items-center md:items-start gap-4">
-  <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 flex items-center justify-center">
-    <img 
-      src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRI7Y7PmYa8S5O12m9I5ogZ7EV5SiCksc4Yog&s" 
-      alt="Logo Empresa" 
-      className="h-12 object-contain" 
-    />
-  </div>
-  <div>
-    <h1 className="text-3xl md:text-4xl font-bold" style={{ color: COLORS.primary }}>
-      Dashboard Comercial 2026
-    </h1>
-    <p className="text-slate-500 text-sm mt-1">
-      Gestión Estratégica y Análisis de Pipeline
-    </p>
-  </div>
-</div>
-  </div>
-  <div>
-    <h1 className="text-3xl md:text-4xl font-bold" style={{ color: COLORS.primary }}>
-      Dashboard Comercial 2026
-    </h1>
-    <p className="text-slate-500 text-sm mt-1">
-      Gestión Estratégica y Análisis de Pipeline
-    </p>
-  </div>
-</div>
+    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8 font-sans max-w-[1400px] mx-auto">
+  
+      <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 flex items-center justify-center">
+            <<img src="/logo.png" alt="Logo RER Energy" className="h-12 object-contain" />
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold" style={{ color: COLORS.primary }}>Dashboard Comercial 2026</h1>
+            <p className="text-slate-500 text-sm mt-1">Gestión Estratégica y Análisis de Pipeline</p>
           </div>
         </div>
       </header>
@@ -621,7 +464,7 @@ export default function App() {
             <input type="file" accept=".csv" onChange={handleFileUpload} onClick={(e) => { e.target.value = null; }} className="hidden" id="file-upload" />
             <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center justify-center w-full">
               <span className="font-bold text-sm" style={{ color: COLORS.primary }}>Haz clic para subir tu Excel (CSV)</span>
-              <span className="text-xs mt-1" style={{ color: COLORS.secondary }}>Datos blindados y análisis profundo activado.</span>
+              <span className="text-xs mt-1" style={{ color: COLORS.secondary }}>Se excluirán automáticamente los proyectos de 2025.</span>
             </label>
           </div>
         ) : (
@@ -630,7 +473,7 @@ export default function App() {
             <button onClick={() => fetchSheetData(sheetUrl)} disabled={isLoading || !sheetUrl} className="text-white px-4 py-2 rounded-md font-semibold text-sm disabled:opacity-50" style={{ backgroundColor: COLORS.success }}>Cargar</button>
           </div>
         )}
-        {dataLoaded && !errorMsg && <p className="text-xs font-semibold mt-3" style={{ color: COLORS.success }}>✅ Datos cargados y depurados correctamente.</p>}
+        {dataLoaded && !errorMsg && <p className="text-xs font-semibold mt-3" style={{ color: COLORS.success }}>✅ Datos cargados correctamente. (Contratos 2025 omitidos).</p>}
         {errorMsg && <p className="text-danger text-xs font-semibold mt-3">{errorMsg}</p>}
       </div>
 
@@ -645,7 +488,7 @@ export default function App() {
               <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Estatus</label><select name="stageFilter" value={filters.stageFilter} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{stageOptions.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
               <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Mes</label><select name="month" value={filters.month} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{months.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
               <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Tecnología</label><select name="projectType" value={filters.projectType} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{projectTypes.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-              <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Financiamiento</label><select name="contractType" value={filters.contractType} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{contractTypes.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+              <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Tipo Contrato</label><select name="contractType" value={filters.contractType} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{contractTypes.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
               <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Canal de Venta</label><select name="channel" value={filters.channel} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{channels.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
               <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Origen</label><select name="origin" value={filters.origin} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{origins.map(o => <option key={o} value={o}>{o}</option>)}</select></div>
               <div className="flex flex-col"><label className="text-xs text-slate-500 mb-1">Rango Energía</label><select name="kwRange" value={filters.kwRange} onChange={handleFilterChange} className="p-2 border rounded-md text-sm bg-slate-50">{kwRanges.map(k => <option key={k} value={k}>{k}</option>)}</select></div>
@@ -653,12 +496,12 @@ export default function App() {
           </div>
 
           {/* KPIs Y META */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="text-white p-6 rounded-xl shadow-md lg:col-span-2 relative overflow-hidden" style={{ backgroundColor: COLORS.primary }}>
               <div className="relative z-10">
                 <h3 className="text-sky-100 text-sm font-semibold flex items-center gap-2 mb-1"><Target size={18} /> Progreso Meta Anual 2026 (Cerrados por Fecha Venta)</h3>
                 <div className="flex items-end gap-4 mt-2">
-                  <span className="text-4xl font-bold">{formatCurrency(totalCerrado2026)}</span>
+                  <span className="text-4xl font-bold">{formatCurrency(totalCerrado)}</span>
                   <span className="text-sky-200 text-sm mb-1">/ {formatCurrency(ANNUAL_GOAL)}</span>
                 </div>
                 <div className="mt-5 bg-sky-900 rounded-full h-4 w-full overflow-hidden border border-sky-800">
@@ -669,26 +512,22 @@ export default function App() {
               <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white rounded-full opacity-10 blur-2xl"></div>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
-              <h3 className="text-slate-500 text-sm font-semibold flex items-center gap-2 mb-2"><TrendingUp size={18} style={{ color: COLORS.warning }} /> Monto Abierto</h3>
+              <h3 className="text-slate-500 text-sm font-semibold flex items-center gap-2 mb-2"><TrendingUp size={18} style={{ color: COLORS.warning }} /> Monto Abierto / Pipeline</h3>
               <span className="text-2xl font-bold text-slate-800">{formatCurrency(totalPosibleCierre)}</span>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
               <h3 className="text-slate-500 text-sm font-semibold flex items-center gap-2 mb-2"><Briefcase size={18} style={{ color: COLORS.secondary }} /> Proyectos Evaluados</h3>
               <span className="text-3xl font-bold text-slate-800">{filteredData.length}</span>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
-              <h3 className="text-slate-500 text-sm font-semibold flex items-center gap-2 mb-2"><Clock size={18} style={{ color: COLORS.success }} /> Ciclo de Venta Promedio</h3>
-              <span className="text-3xl font-bold text-slate-800">{avgCycleDays} <span className="text-lg text-slate-500 font-medium">días</span></span>
-            </div>
           </div>
 
-          {/* === SECCIÓN PANORÁMICA DE GRÁFICAS (1 COLUMNA, 100% ANCHO) === */}
+          {/* === SECCIÓN PANORÁMICA DE GRÁFICAS (1 COLUMNA, 100% ANCHO, MULTICOLOR) === */}
           <div className="flex flex-col gap-12 mb-12">
             
-            {/* 1. AVANCE ACUMULADO */}
+            {/* 1. AVANCE ACUMULADO (SOLO VENTAS REALES) */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
-              <h3 className="text-2xl font-bold text-slate-800 mb-2">Tendencia de Ventas (Curva Trimestral 2026)</h3>
-              <p className="text-sm text-slate-500 mb-6">Gráfica de cumplimiento mensual proyectada por trimestres: Q1 (20%), Q2 (20%), Q3 (20%) y Q4 (40%).</p>
+              <h3 className="text-2xl font-bold text-slate-800 mb-2">Avance de Ventas Reales vs Meta</h3>
+              <p className="text-sm text-slate-500 mb-6">Gráfica estricta de cumplimiento: Solo se contabilizan los montos de proyectos <b>Ganados</b> basados en su <b>Fecha de Venta</b>.</p>
               <div className="h-[450px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={monthlyData} margin={{ top: 20, right: 30, bottom: 20, left: 60 }}>
@@ -698,184 +537,113 @@ export default function App() {
                     <RechartsTooltip formatter={(value) => typeof value === 'number' ? formatCurrency(value) : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
                     <Legend wrapperStyle={{fontSize: '14px', paddingTop: '20px'}} />
                     <Bar dataKey="Ventas" name="Venta del Mes" maxBarSize={80}>
-                       {monthlyData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[index % COLORS.piePalette.length]} />)}
+                       {monthlyData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsA[index % COLORS.pieColorsA.length]} />)}
                     </Bar>
                     <Line type="monotone" dataKey="Acumulado" name="Cierre Acumulado" stroke={COLORS.primary} strokeWidth={4} dot={{r: 6}} />
-                    <Line type="step" dataKey="Meta" name="Meta Trimestral (Curva de Cierre)" stroke={COLORS.danger} strokeDasharray="6 6" strokeWidth={3} dot={false} />
+                    <Line type="step" dataKey="Meta" name="Meta Anual (450M)" stroke={COLORS.danger} strokeDasharray="6 6" strokeWidth={3} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* PIPELINE ASIGNADOS (NUEVA GRÁFICA KPI DE RENDIMIENTO) */}
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
-              <h3 className="text-2xl font-bold text-slate-800 mb-2 flex items-center gap-3"><Zap size={28} style={{color: COLORS.warning}}/> Pipeline Asignado por Responsable</h3>
-              <p className="text-sm text-slate-500 mb-6">Monto económico de los proyectos filtrados estrictamente bajo la etapa "Asignado" (Empujando para cierre).</p>
-              <div className="h-[450px] w-full">
-                {assignedData.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-400">No hay proyectos en etapa de asignación.</div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={assignedData} layout="vertical" margin={{ top: 5, right: 30, left: 30, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                      <XAxis type="number" tickFormatter={(val) => `$${val/1000000}M`} tick={{fontSize: 14}} />
-                      <YAxis dataKey="name" type="category" tick={{fontSize: 14, fontWeight: 500, fill: '#334155'}} width={200} />
-                      <RechartsTooltip formatter={(value) => formatCurrency(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
-                      <Bar dataKey="value" name="Monto Empujado" radius={[0, 6, 6, 0]} barSize={55}>
-                        {assignedData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 7) % COLORS.piePalette.length]} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </div>
-
             {/* 2. ETAPA COMERCIAL */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
-              <h3 className="text-2xl font-bold text-slate-800 mb-6">Conteo General por Etapa Comercial</h3>
+              <h3 className="text-2xl font-bold text-slate-800 mb-6">Conteo de Proyectos por Etapa Comercial</h3>
               <div className="h-[450px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={stageData} layout="vertical" margin={{ top: 5, right: 30, left: 30, bottom: 5 }}>
+                  <BarChart data={stageData} layout="vertical" margin={{ top: 5, right: 30, left: 150, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                     <XAxis type="number" tick={{fontSize: 14}} />
                     <YAxis dataKey="name" type="category" tick={{fontSize: 14, fontWeight: 500, fill: '#334155'}} width={200} />
                     <RechartsTooltip formatter={(value) => typeof value === 'number' ? value : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
-                    <Bar dataKey="value" name="Cantidad de Sitios" radius={[0, 6, 6, 0]} barSize={55}>
-                      {stageData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 1) % COLORS.piePalette.length]} />)}
+                    <Bar dataKey="value" name="Cantidad de Proyectos" radius={[0, 6, 6, 0]} barSize={55}>
+                      {stageData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsB[index % COLORS.pieColorsB.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* 3. TECNOLOGÍAS UTILIZADAS (EN MW MATEMÁTICOS) */}
+            {/* 3. TECNOLOGÍAS UTILIZADAS */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
               <h3 className="text-2xl font-bold text-slate-800 mb-2 flex items-center gap-3"><Cpu size={28} style={{color: COLORS.primary}}/> Implementación por Tecnología</h3>
-              <p className="text-sm text-slate-500 mb-6">Muestra el valor total en Energía (KW / MW) que está activa o implementada según tecnología.</p>
+              <p className="text-sm text-slate-500 mb-6">Muestra en cuántos proyectos activos participa cada tecnología (un mismo proyecto puede incluir varias).</p>
               <div className="h-[400px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={techData} margin={{ top: 20, right: 30, left: 30, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="name" tick={{fontSize: 15, fontWeight: 500, fill: '#334155'}} tickMargin={10} />
-                    <YAxis tickFormatter={(val) => formatKW(val)} tick={{fontSize: 14, fill: '#475569'}} width={100} />
-                    <RechartsTooltip formatter={(value) => formatKW(Number(value))} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
-                    <Bar dataKey="value" name="Volumen Implementado" radius={[6, 6, 0, 0]} maxBarSize={120}>
-                      {techData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 4) % COLORS.piePalette.length]} />)}
+                    <YAxis tick={{fontSize: 14, fill: '#475569'}} />
+                    <RechartsTooltip formatter={(value) => typeof value === 'number' ? value : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
+                    <Bar dataKey="value" name="Proyectos que la incluyen" radius={[6, 6, 0, 0]} maxBarSize={120}>
+                       {techData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsC[index % COLORS.pieColorsC.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* 4. GANADOS POR CANAL */}
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full flex flex-col md:flex-row items-center">
-              <div className="w-full md:w-1/2">
-                <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">Sitios Ganados por Canal (Partners)</h3>
-                <div className="relative h-[400px] w-full flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={channelData} cx="50%" cy="50%" innerRadius={100} outerRadius={170} dataKey="value" stroke="none" label={false}>
-                        {channelData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[index % COLORS.piePalette.length]} />)}
-                      </Pie>
-                      <RechartsTooltip formatter={(value) => `${value} sitios`} contentStyle={{fontSize: '15px', borderRadius: '8px'}} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-7xl font-bold" style={{color: COLORS.primary}}>{totalProyectosCerrados}</span>
-                    <span className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-2">Sitios</span>
-                  </div>
+            {/* 4. GANADOS POR CANAL (INDIVIDUAL PANORÁMICO) */}
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
+              <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">Proyectos Ganados por Canal</h3>
+              <div className="relative h-[450px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={channelData} cx="50%" cy="50%" innerRadius={120} outerRadius={180} dataKey="value" label={({name, value, percent}) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`} labelLine={true} style={{fontSize: '15px', fontWeight: 500, fill: '#334155'}}>
+                      {channelData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsA[index % COLORS.pieColorsA.length]} />)}
+                    </Pie>
+                    <RechartsTooltip formatter={(value) => typeof value === 'number' ? value : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-6xl font-bold" style={{color: COLORS.primary}}>{totalProyectosCerrados}</span>
+                  <span className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-2">Cerrados</span>
                 </div>
-              </div>
-              <div className="w-full md:w-1/2 mt-8 md:mt-0 px-4 md:px-12 max-h-[400px] overflow-y-auto">
-                <h4 className="text-lg font-bold text-slate-600 mb-4 border-b pb-2 sticky top-0 bg-white">Distribución de Sitios</h4>
-                <ul className="space-y-4">
-                  {channelData.map((item, index) => (
-                    <li key={item.name} className="flex items-center justify-between text-slate-700 text-lg font-medium">
-                      <div className="flex items-center gap-4">
-                        <span className="w-5 h-5 rounded-md" style={{backgroundColor: COLORS.piePalette[index % COLORS.piePalette.length]}}></span>
-                        {item.name}
-                      </div>
-                      <span className="bg-slate-100 px-4 py-1.5 rounded-lg text-slate-800">{item.value} sitios</span>
-                    </li>
-                  ))}
-                </ul>
               </div>
             </div>
 
-            {/* 5. FUENTE DE FINANCIAMIENTO */}
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full flex flex-col md:flex-row items-center">
-              <div className="w-full md:w-1/2">
-                <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">Fuente de Financiamiento</h3>
-                <div className="h-[400px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={kwByContractData} cx="50%" cy="50%" outerRadius={170} dataKey="value" stroke="none" label={false}>
-                        {kwByContractData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 3) % COLORS.piePalette.length]} />)}
-                      </Pie>
-                      <RechartsTooltip formatter={(value) => formatKW(Number(value))} contentStyle={{fontSize: '15px', borderRadius: '8px'}} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              <div className="w-full md:w-1/2 mt-8 md:mt-0 px-4 md:px-12 max-h-[400px] overflow-y-auto">
-                <h4 className="text-lg font-bold text-slate-600 mb-4 border-b pb-2 sticky top-0 bg-white">Financiamiento por Sitio</h4>
-                <ul className="space-y-4">
-                  {kwByContractData.map((item, index) => (
-                    <li key={item.name} className="flex items-center justify-between text-slate-700 text-lg font-medium">
-                      <div className="flex items-center gap-4">
-                        <span className="w-5 h-5 rounded-md" style={{backgroundColor: COLORS.piePalette[(index + 3) % COLORS.piePalette.length]}}></span>
-                        {item.name}
-                      </div>
-                      <span className="bg-slate-100 px-4 py-1.5 rounded-lg text-slate-800 font-bold">{formatKW(item.value)}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* 5. ENERGÍA POR CONTRATO (INDIVIDUAL PANORÁMICO) */}
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
+              <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">Distribución de Energía por Tipo de Contrato</h3>
+              <div className="h-[450px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={kwByContractData} cx="50%" cy="50%" outerRadius={180} dataKey="value" label={({name, value}) => `${name}: ${formatKW(value)}`} labelLine={true} style={{fontSize: '15px', fontWeight: 500, fill: '#334155'}}>
+                      {kwByContractData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsB[index % COLORS.pieColorsB.length]} />)}
+                    </Pie>
+                    <RechartsTooltip formatter={(value) => typeof value === 'number' ? formatKW(value) : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
-            {/* 6. ORIGEN DE CUENTA */}
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full flex flex-col md:flex-row items-center">
-              <div className="w-full md:w-1/2">
-                <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">Energía por Origen de la Cuenta</h3>
-                <div className="h-[400px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={originData} cx="50%" cy="50%" outerRadius={170} dataKey="value" stroke="none" label={false}>
-                        {originData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 6) % COLORS.piePalette.length]} />)}
-                      </Pie>
-                      <RechartsTooltip formatter={(value) => formatKW(Number(value))} contentStyle={{fontSize: '15px', borderRadius: '8px'}} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              <div className="w-full md:w-1/2 mt-8 md:mt-0 px-4 md:px-12 max-h-[400px] overflow-y-auto">
-                <h4 className="text-lg font-bold text-slate-600 mb-4 border-b pb-2 sticky top-0 bg-white">Volumen por Origen</h4>
-                <ul className="space-y-4">
-                  {originData.map((item, index) => (
-                    <li key={item.name} className="flex items-center justify-between text-slate-700 text-lg font-medium">
-                      <div className="flex items-center gap-4">
-                        <span className="w-5 h-5 rounded-md" style={{backgroundColor: COLORS.piePalette[(index + 6) % COLORS.piePalette.length]}}></span>
-                        {item.name}
-                      </div>
-                      <span className="bg-slate-100 px-4 py-1.5 rounded-lg text-slate-800 font-bold">{formatKW(item.value)}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* 6. ORIGEN DE CUENTA (INDIVIDUAL PANORÁMICO) */}
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
+              <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">Origen de la Cuenta</h3>
+              <div className="h-[450px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={originData} cx="50%" cy="50%" outerRadius={180} dataKey="value" label={({name, value}) => `${name}: ${value} cuentas`} labelLine={true} style={{fontSize: '15px', fontWeight: 500, fill: '#334155'}}>
+                      {originData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsC[index % COLORS.pieColorsC.length]} />)}
+                    </Pie>
+                    <RechartsTooltip formatter={(value) => typeof value === 'number' ? value : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
             {/* 7. INDUSTRIAS */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
               <h3 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3"><Factory size={28} style={{color: COLORS.primary}}/> Top Industrias (Rubro de Empresa)</h3>
-              <div className="h-[600px] w-full">
+              <div className="h-[550px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={industryData} layout="vertical" margin={{ top: 5, right: 30, left: 50, bottom: 5 }}>
+                  <BarChart data={industryData} layout="vertical" margin={{ top: 5, right: 30, left: 150, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                     <XAxis type="number" tick={{fontSize: 14}} />
                     <YAxis dataKey="name" type="category" tick={{fontSize: 14, fill: '#334155'}} width={250} />
                     <RechartsTooltip formatter={(value) => typeof value === 'number' ? value : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
                     <Bar dataKey="value" name="Cantidad" radius={[0, 6, 6, 0]} barSize={35}>
-                       {industryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 2) % COLORS.piePalette.length]} />)}
+                       {industryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsA[index % COLORS.pieColorsA.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -885,15 +653,15 @@ export default function App() {
             {/* 8. ESTADOS */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 w-full">
               <h3 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3"><MapPin size={28} style={{color: COLORS.success}}/> Top Estados (Presencia Geográfica)</h3>
-              <div className="h-[600px] w-full">
+              <div className="h-[550px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={stateData} layout="vertical" margin={{ top: 5, right: 30, left: 50, bottom: 5 }}>
+                  <BarChart data={stateData} layout="vertical" margin={{ top: 5, right: 30, left: 150, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                     <XAxis type="number" tick={{fontSize: 14}} />
                     <YAxis dataKey="name" type="category" tick={{fontSize: 14, fill: '#334155'}} width={250} />
                     <RechartsTooltip formatter={(value) => typeof value === 'number' ? value : String(value)} contentStyle={{fontSize: '14px', borderRadius: '8px'}} />
                     <Bar dataKey="value" name="Proyectos" radius={[0, 6, 6, 0]} barSize={35}>
-                       {stateData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.piePalette[(index + 5) % COLORS.piePalette.length]} />)}
+                       {stateData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS.pieColorsB[index % COLORS.pieColorsB.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -903,44 +671,29 @@ export default function App() {
           </div>
           {/* === FIN DE SECCIÓN DE GRÁFICAS === */}
 
-          {/* BARRA DE BÚSQUEDA GLOBAL PARA DIRECTORIO E INSIGHTS */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex items-center gap-3">
-             <Search size={24} className="text-slate-400" />
-             <input 
-                type="text" 
-                placeholder="Buscar proyecto, responsable, notas, competidor o ubicación..." 
-                className="w-full bg-transparent outline-none text-lg text-slate-700 placeholder-slate-400"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-             />
-             {searchTerm && <button onClick={() => setSearchTerm('')} className="text-xs text-slate-500 hover:text-danger font-bold">Limpiar</button>}
-          </div>
-
           {/* VISTA DETALLADA DE PROYECTOS */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-12">
-            <div className="p-5 border-b border-slate-900 flex justify-between items-center" style={{backgroundColor: COLORS.primary}}>
-              <h3 className="text-xl font-bold text-white flex items-center gap-2"><List size={24}/> Directorio de Proyectos (Agrupado por Estatus)</h3>
-              <span className="text-sky-200 text-sm">{sortedAndSearchedData.length} resultados</span>
+            <div className="p-5 border-b border-slate-900" style={{backgroundColor: COLORS.primary}}>
+              <h3 className="text-xl font-bold text-white flex items-center gap-2"><List size={24}/> Directorio de Proyectos Activos (2026)</h3>
             </div>
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full text-base text-left">
                 <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 shadow-sm z-10">
                   <tr>
                     <th className="p-4 border-b">Nombre del Proyecto</th>
-                    <th className="p-4 border-b">Responsable</th>
                     <th className="p-4 border-b">Estatus</th>
                     <th className="p-4 border-b">Tecnología / Energía</th>
                     <th className="p-4 border-b">Ubicación / Industria</th>
+                    <th className="p-4 border-b">Mes Evaluado</th>
                     <th className="p-4 border-b text-right">Monto</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedAndSearchedData.map(item => (
+                  {filteredData.map(item => (
                     <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                       <td className="p-4 font-semibold text-slate-800">{item.name}</td>
-                      <td className="p-4 text-slate-600 font-medium">{item.channel}</td>
                       <td className="p-4">
-                        <span className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${item.stageCategory === 'Cerrado/Ganado' ? 'bg-[#e0f2fe] text-[#0369a1]' : item.stageCategory === 'Perdido/Pausado' ? 'bg-red-100 text-red-800' : 'bg-[#dcfce7] text-[#166534]'}`}>
+                        <span className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider ${item.isWon ? 'bg-[#e0f2fe] text-[#0369a1]' : item.isLost ? 'bg-red-100 text-red-800' : 'bg-[#dcfce7] text-[#166534]'}`}>
                           {item.stageCategory}
                         </span>
                       </td>
@@ -949,10 +702,11 @@ export default function App() {
                         <span className="block font-medium">{item.state}</span>
                         <span className="text-sm text-slate-400">{item.industry}</span>
                       </td>
+                      <td className="p-4 text-slate-600">{item.month}</td>
                       <td className="p-4 text-right font-bold" style={{color: COLORS.primary}}>{formatCurrency(item.amount)}</td>
                     </tr>
                   ))}
-                  {sortedAndSearchedData.length === 0 && <tr><td colSpan="6" className="p-8 text-lg text-center text-slate-500">No se encontraron proyectos en la búsqueda.</td></tr>}
+                  {filteredData.length === 0 && <tr><td colSpan="6" className="p-8 text-lg text-center text-slate-500">No hay proyectos que coincidan con los filtros en 2026.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -961,17 +715,14 @@ export default function App() {
           {/* SECCIÓN DE INSIGHTS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-              <div className="bg-amber-50 p-5 border-b border-amber-100 flex justify-between items-center">
-                 <h3 className="text-xl font-bold text-amber-900 flex items-center gap-2"><AlertCircle size={24} className="text-amber-600" /> Posible Cierre (Accionables)</h3>
-                 <span className="text-amber-700 text-sm font-bold">{posibleCierreList.length}</span>
-              </div>
+              <div className="bg-amber-50 p-5 border-b border-amber-100"><h3 className="text-xl font-bold text-amber-900 flex items-center gap-2"><AlertCircle size={24} className="text-amber-600" /> Posible Cierre (Accionables)</h3></div>
               <div className="p-6 flex-1 overflow-auto max-h-[500px]">
-                {posibleCierreList.length === 0 ? <p className="text-slate-500 text-base text-center py-10">No hay proyectos encontrados.</p> : (
+                {posibleCierreList.length === 0 ? <p className="text-slate-500 text-base text-center py-10">No hay proyectos en etapas abiertas o en propuesta.</p> : (
                   <div className="space-y-5">
                     {posibleCierreList.map(item => (
                       <div key={item.id} className="p-5 border border-slate-100 rounded-xl bg-slate-50">
                         <div className="flex justify-between items-start mb-3"><h4 className="text-lg font-bold text-slate-800">{item.name}</h4><span className="text-base font-bold text-sky-700">{formatCurrency(item.amount)}</span></div>
-                        <div className="text-sm text-slate-600 mb-4 grid grid-cols-2 gap-2"><span>Responsable: <b>{item.channel}</b></span><span>Contrato: <b>{item.contractType}</b></span></div>
+                        <div className="text-sm text-slate-600 mb-4 grid grid-cols-2 gap-2"><span>Tecnología: <b>{item.projectType} ({formatKW(item.kw)})</b></span><span>Contrato: <b>{item.contractType}</b></span></div>
                         <div className="bg-white p-4 rounded-lg border border-amber-200">
                           <strong className="text-amber-700 text-xs uppercase tracking-wide block mb-2">Próxima Acción / Estatus:</strong>
                           <span className="text-slate-700 flex items-start gap-2 text-base"><ArrowRight size={20} className="text-amber-500 shrink-0 mt-0.5" />{item.actionable || 'Revisar estatus de la negociación.'}</span>
@@ -984,7 +735,7 @@ export default function App() {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-              <div className="bg-slate-100 p-5 border-b border-slate-200"><h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><SearchX size={24} className="text-slate-600" /> Análisis de Perdidos / Pausados</h3></div>
+              <div className="bg-slate-100 p-5 border-b border-slate-200"><h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><SearchX size={24} className="text-slate-600" /> Perdidos / Pausados</h3></div>
               <div className="p-6 flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[500px]">
                 <div>
                   <h4 className="font-bold text-sm text-slate-500 mb-4 uppercase tracking-wider">Top Competidores</h4>
@@ -999,12 +750,11 @@ export default function App() {
                 <div>
                   <h4 className="font-bold text-sm text-slate-500 mb-4 uppercase tracking-wider">Motivos & Notas</h4>
                   <div className="space-y-4">
-                    {lostPausedList.filter(d => d.reason || d.competitor).map(item => (
+                    {lostPausedList.filter(d => d.reason).map(item => (
                       <div key={item.id} className="text-base border-l-4 border-danger pl-4 py-1">
-                        <p className="font-bold text-slate-800">{item.reason || 'Sin motivo capturado'}</p>
-                        <p className="text-sm text-slate-500 mb-2">{item.name} ({item.channel})</p>
-                        {item.competitor && <p className="text-xs font-bold text-danger bg-red-50 inline-block px-2 py-1 rounded">Competencia: {item.competitor}</p>}
-                        {item.actionable && <p className="text-sm text-sky-800 bg-sky-50 inline-block px-3 py-1.5 rounded-md mt-1 block"><strong>Siguiente paso:</strong> {item.actionable}</p>}
+                        <p className="font-bold text-slate-800">{item.reason}</p>
+                        <p className="text-sm text-slate-500 mb-2">{item.name}</p>
+                        {item.actionable && <p className="text-sm text-sky-800 bg-sky-50 inline-block px-3 py-1.5 rounded-md mt-1"><strong>Siguiente paso:</strong> {item.actionable}</p>}
                       </div>
                     ))}
                   </div>
