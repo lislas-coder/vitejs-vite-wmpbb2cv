@@ -583,9 +583,23 @@ export default function App() {
           <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 flex items-center justify-center">
             <img src="https://rerenergygroup.com/wp-content/uploads/2021/04/RER-Logo-2021-300x111.png" alt="RER Energy Group" className="h-12 object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span class="text-xl font-bold text-[#0a3663] px-2">RER ENERGY</span>'; }} />
           </div>
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold" style={{ color: COLORS.primary }}>Dashboard Comercial 2026</h1>
-            <p className="text-slate-500 text-sm mt-1">Gestión Estratégica y Análisis de Pipeline</p>
+          <div className="flex flex-col items-center md:items-start gap-4">
+  <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 flex items-center justify-center">
+    <img 
+      src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRI7Y7PmYa8S5O12m9I5ogZ7EV5SiCksc4Yog&s" 
+      alt="Logo Empresa" 
+      className="h-12 object-contain" 
+    />
+  </div>
+  <div>
+    <h1 className="text-3xl md:text-4xl font-bold" style={{ color: COLORS.primary }}>
+      Dashboard Comercial 2026
+    </h1>
+    <p className="text-slate-500 text-sm mt-1">
+      Gestión Estratégica y Análisis de Pipeline
+    </p>
+  </div>
+</div>
           </div>
         </div>
       </header>
